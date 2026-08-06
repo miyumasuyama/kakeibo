@@ -1,0 +1,221 @@
+const { createApp, ref, computed, watch, onMounted } = Vue;
+
+createApp({
+    setup() {
+        const activeTab = ref('input');
+        const records = ref([]);
+        const currentAmount = ref('');
+        const showOtherCategories = ref(false);
+
+        // 全体予算
+        const totalBudget = ref(200000);
+        const editTotalBudget = ref(200000);
+
+        // 固定費データ
+        const fixedCosts = ref([
+            { name: '家賃', amount: 65000 },
+            { name: '通信費・サブスク', amount: 8000 }
+        ]);
+        const newFixedName = ref('');
+        const newFixedAmount = ref('');
+
+        // 初期カテゴリ
+        const defaultCategories = [
+            { name: '自炊', budget: 20000 },
+            { name: '外食', budget: 15000 },
+            { name: '日用品', budget: 5000 },
+            { name: 'その他', budget: 0 }
+        ];
+        const categories = ref([...defaultCategories]);
+        const editCategories = ref(JSON.parse(JSON.stringify(defaultCategories)));
+
+        const colorPalette = [
+            { bg: 'bg-green-500', border: 'border-green-500', text: 'text-green-600', bar: 'bg-green-400' },
+            { bg: 'bg-yellow-500', border: 'border-yellow-500', text: 'text-yellow-600', bar: 'bg-yellow-400' },
+            { bg: 'bg-purple-500', border: 'border-purple-500', text: 'text-purple-600', bar: 'bg-purple-400' },
+            { bg: 'bg-pink-500', border: 'border-pink-500', text: 'text-pink-600', bar: 'bg-pink-400' },
+            { bg: 'bg-indigo-500', border: 'border-indigo-500', text: 'text-indigo-600', bar: 'bg-indigo-400' },
+            { bg: 'bg-gray-500', border: 'border-gray-500', text: 'text-gray-600', bar: 'bg-gray-400' },
+        ];
+
+        onMounted(() => {
+            const savedData = localStorage.getItem('my_kakeibo_v8') || localStorage.getItem('my_kakeibo_v7');
+            const savedSettings = localStorage.getItem('my_kakeibo_settings_v8') || localStorage.getItem('my_kakeibo_settings_v7');
+            const savedFixed = localStorage.getItem('my_kakeibo_fixed_v8') || localStorage.getItem('my_kakeibo_fixed_v7');
+            const savedMonth = localStorage.getItem('my_kakeibo_month_v8') || localStorage.getItem('my_kakeibo_month_v7');
+            
+            const today = new Date();
+            const currentMonthStr = today.getFullYear() + '-' + (today.getMonth() + 1).toString().padStart(2, '0');
+
+            if (savedMonth && savedMonth !== currentMonthStr) {
+                records.value = [];
+                localStorage.setItem('my_kakeibo_month_v8', currentMonthStr);
+                alert('月が変わったので履歴をリセットしました！');
+            } else {
+                localStorage.setItem('my_kakeibo_month_v8', currentMonthStr);
+                if (savedData) records.value = JSON.parse(savedData);
+            }
+
+            if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                totalBudget.value = settings.totalBudget;
+                editTotalBudget.value = settings.totalBudget;
+                categories.value = settings.categories;
+                editCategories.value = JSON.parse(JSON.stringify(settings.categories));
+            }
+
+            if (savedFixed) {
+                fixedCosts.value = JSON.parse(savedFixed);
+            }
+        });
+
+        watch(records, (newVal) => {
+            localStorage.setItem('my_kakeibo_v8', JSON.stringify(newVal));
+        }, { deep: true });
+
+        watch(fixedCosts, (newVal) => {
+            localStorage.setItem('my_kakeibo_fixed_v8', JSON.stringify(newVal));
+        }, { deep: true });
+
+        const addFixedCost = () => {
+            if (!newFixedName.value.trim() || !newFixedAmount.value || newFixedAmount.value <= 0) return;
+            fixedCosts.value.push({
+                name: newFixedName.value.trim(),
+                amount: parseInt(newFixedAmount.value, 10)
+            });
+            newFixedName.value = '';
+            newFixedAmount.value = '';
+        };
+
+        const removeFixedCost = (index) => {
+            fixedCosts.value.splice(index, 1);
+        };
+
+        const appendNumber = (num) => {
+            if (currentAmount.value.length < 7) {
+                if (currentAmount.value === '0' && num !== '00') {
+                     currentAmount.value = String(num);
+                } else {
+                    currentAmount.value += String(num);
+                }
+            }
+        };
+        const clearAmount = () => currentAmount.value = '';
+
+        const otherCategoriesList = computed(() => {
+            return categories.value.filter(c => c.name !== '自炊' && c.name !== '外食');
+        });
+
+        const handleOtherClick = () => {
+            const amount = parseInt(currentAmount.value, 10);
+            if (!amount || amount <= 0) return;
+
+            if (otherCategoriesList.value.length > 1) {
+                showOtherCategories.value = !showOtherCategories.value;
+            } else {
+                addRecord('その他');
+            }
+        };
+
+        const addRecord = (categoryName) => {
+            const amount = parseInt(currentAmount.value, 10);
+            if (!amount || amount <= 0) return;
+            records.value.unshift({ 
+                date: new Date().toISOString(), 
+                category: categoryName, 
+                amount: amount,
+                paymentMethod: 'QR'
+            });
+            currentAmount.value = '';
+            showOtherCategories.value = false;
+        };
+
+        const deleteRecord = (index) => {
+            if(confirm('この記録を削除しますか？')) {
+                records.value.splice(index, 1);
+            }
+        };
+
+        const getPaymentIcon = (method) => {
+            if (method === 'QR') return 'fas fa-qrcode';
+            if (method === '現金') return 'fas fa-coins';
+            if (method === 'クレカ') return 'fas fa-credit-card';
+        };
+
+        const getActivePaymentStyle = (method) => {
+            if (method === 'QR') return 'bg-green-500 text-white shadow-sm font-bold';
+            if (method === '現金') return 'bg-yellow-500 text-white shadow-sm font-bold';
+            if (method === 'クレカ') return 'bg-blue-500 text-white shadow-sm font-bold';
+        };
+
+        const addCategory = () => editCategories.value.push({ name: '', budget: 0 });
+        const removeCategory = (index) => editCategories.value.splice(index, 1);
+        const saveSettings = () => {
+            editCategories.value = editCategories.value.filter(c => c.name.trim() !== '');
+            totalBudget.value = editTotalBudget.value;
+            categories.value = JSON.parse(JSON.stringify(editCategories.value));
+            
+            localStorage.setItem('my_kakeibo_settings_v8', JSON.stringify({
+                totalBudget: totalBudget.value,
+                categories: categories.value
+            }));
+            alert('設定を保存しました！');
+            activeTab.value = 'input';
+        };
+
+        const totalSpent = computed(() => records.value.reduce((sum, r) => sum + r.amount, 0));
+        const totalFixedCost = computed(() => fixedCosts.value.reduce((sum, f) => sum + f.amount, 0));
+        
+        const remainingTotal = computed(() => Math.max(0, totalBudget.value - totalFixedCost.value - totalSpent.value));
+        
+        const freeBudgetPercentage = computed(() => {
+            const freeFrame = totalBudget.value - totalFixedCost.value;
+            if (freeFrame <= 0) return 0;
+            return Math.min(100, Math.max(0, (remainingTotal.value / freeFrame) * 100));
+        });
+
+        const getCategorySpent = (categoryName) => {
+            return records.value.filter(r => r.category === categoryName).reduce((sum, r) => sum + r.amount, 0);
+        };
+        const getRemainingCategoryBudget = (cat) => {
+            return Math.max(0, cat.budget - getCategorySpent(cat.name));
+        };
+        const getCategoryPercentage = (cat) => {
+            if (!cat.budget || cat.budget <= 0) return 100;
+            const remain = getRemainingCategoryBudget(cat);
+            return Math.min(100, Math.max(0, (remain / cat.budget) * 100));
+        };
+
+        const paymentTotals = computed(() => {
+            const totals = { 'QR': 0, '現金': 0, 'クレカ': 0 };
+            records.value.forEach(r => {
+                const m = r.paymentMethod || 'QR';
+                if(totals[m] !== undefined) totals[m] += r.amount;
+            });
+            return totals;
+        });
+
+        const getCategoryColor = (categoryName) => {
+            const index = categories.value.findIndex(c => c.name === categoryName);
+            if (index === -1) return colorPalette[colorPalette.length - 1];
+            return colorPalette[index % colorPalette.length];
+        };
+
+        const formatDate = (dateString) => {
+            const d = new Date(dateString);
+            return `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+        };
+
+        return {
+            activeTab, records, currentAmount, showOtherCategories, otherCategoriesList,
+            totalBudget, editTotalBudget, categories, editCategories,
+            fixedCosts, newFixedName, newFixedAmount, addFixedCost, removeFixedCost, totalFixedCost,
+            remainingTotal, freeBudgetPercentage, totalSpent, paymentTotals,
+            appendNumber, clearAmount, handleOtherClick, addRecord, deleteRecord,
+            getPaymentIcon, getActivePaymentStyle,
+            addCategory, removeCategory, saveSettings,
+            getCategorySpent, getRemainingCategoryBudget, getCategoryPercentage, getCategoryColor,
+            formatDate
+        };
+    }
+}).mount('#app');
